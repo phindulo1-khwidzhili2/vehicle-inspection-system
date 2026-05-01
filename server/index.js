@@ -3,7 +3,9 @@ const cors = require("cors");
 const jwt = require("jsonwebtoken");
 const multer = require("multer");
 const bcrypt = require("bcryptjs");
+const rateLimit = require("express-rate-limit");
 const { createClient } = require("@supabase/supabase-js");
+
 
 require("dotenv").config();
 
@@ -13,6 +15,27 @@ const app = express();
 
 app.use(cors());
 app.use(express.json());
+
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  message: {
+    error: "Too many login attempts. Please try again after 15 minutes.",
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 200,
+  message: {
+    error: "Too many requests. Please try again later.",
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 
 const upload = multer({ storage: multer.memoryStorage() });
 
@@ -49,7 +72,7 @@ function allowRoles(...roles) {
   };
 }
 
-app.post("/api/login", async (req, res) => {
+app.post("/api/login", loginLimiter, async (req, res) => {
   try {
     const { email, password } = req.body;
 
@@ -88,10 +111,13 @@ if (!validPassword) {
         role: user.role,
       },
     });
+app.use("/api", apiLimiter);
+
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
+
 
 app.post("/api/upload-defect-photo", auth, upload.single("photo"), async (req, res) => {
   try {
