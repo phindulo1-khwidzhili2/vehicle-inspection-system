@@ -28,23 +28,49 @@ export default function App() {
     window.location.reload();
   }
 
+  function TopActions({ showHistory = false, showBack = false }) {
+    return (
+      <div style={styles.actionBar}>
+        <div style={styles.actionLeft}>
+          {showBack && (
+            <button style={styles.secondaryButton} onClick={() => setVehicle(null)}>
+              ← Back
+            </button>
+          )}
+
+          {showHistory && (
+            <button style={styles.primaryButton} onClick={() => setVehicle("HISTORY")}>
+              View My Inspections
+            </button>
+          )}
+
+          <button
+            style={styles.primaryButton}
+            onClick={() => setShowChangePassword(true)}
+          >
+            Change Password
+          </button>
+        </div>
+
+        <button style={styles.logoutButton} onClick={logout}>
+          Logout
+        </button>
+      </div>
+    );
+  }
+
   if (!user) {
     return <Login setUser={setUser} />;
   }
 
   if (showChangePassword) {
-    return (
-      <ChangePassword onBack={() => setShowChangePassword(false)} />
-    );
+    return <ChangePassword onBack={() => setShowChangePassword(false)} />;
   }
 
   if (user.role === "ADMIN") {
     return (
       <>
-        <button onClick={logout}>Logout</button>
-        <button onClick={() => setShowChangePassword(true)}>
-          Change Password
-        </button>
+        <TopActions />
         <AdminDashboard />
       </>
     );
@@ -53,10 +79,7 @@ export default function App() {
   if (user.role === "SUPERVISOR") {
     return (
       <>
-        <button onClick={logout}>Logout</button>
-        <button onClick={() => setShowChangePassword(true)}>
-          Change Password
-        </button>
+        <TopActions />
         <SupervisorDashboard />
       </>
     );
@@ -65,16 +88,7 @@ export default function App() {
   if (!vehicle) {
     return (
       <>
-        <button onClick={logout}>Logout</button>
-
-        <button onClick={() => setShowChangePassword(true)}>
-          Change Password
-        </button>
-
-        <button onClick={() => setVehicle("HISTORY")}>
-          View My Inspections
-        </button>
-
+        <TopActions showHistory />
         <ScanVehicle onScan={handleScan} />
       </>
     );
@@ -83,12 +97,7 @@ export default function App() {
   if (vehicle === "HISTORY") {
     return (
       <>
-        <button onClick={() => setVehicle(null)}>Back</button>
-
-        <button onClick={() => setShowChangePassword(true)}>
-          Change Password
-        </button>
-
+        <TopActions showBack />
         <OperatorDashboard user={user} />
       </>
     );
@@ -96,13 +105,57 @@ export default function App() {
 
   return (
     <>
-      <button onClick={logout}>Logout</button>
-
-      <button onClick={() => setShowChangePassword(true)}>
-        Change Password
-      </button>
-
+      <TopActions />
       <InspectionForm vehicle={vehicle} user={user} />
     </>
   );
 }
+
+const styles = {
+  actionBar: {
+    position: "sticky",
+    top: 0,
+    zIndex: 50,
+    background: "linear-gradient(135deg, #020617, #111827)",
+    padding: "12px 18px",
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 12,
+    boxShadow: "0 10px 25px rgba(0,0,0,0.25)",
+    fontFamily: "Arial, sans-serif",
+  },
+  actionLeft: {
+    display: "flex",
+    gap: 10,
+    flexWrap: "wrap",
+  },
+  primaryButton: {
+    background: "linear-gradient(135deg, #1d4ed8, #111827)",
+    color: "white",
+    border: "1px solid rgba(255,255,255,0.15)",
+    padding: "10px 14px",
+    borderRadius: 12,
+    fontWeight: "bold",
+    cursor: "pointer",
+    boxShadow: "0 8px 18px rgba(30,64,175,0.25)",
+  },
+  secondaryButton: {
+    background: "#eff6ff",
+    color: "#1d4ed8",
+    border: "1px solid #bfdbfe",
+    padding: "10px 14px",
+    borderRadius: 12,
+    fontWeight: "bold",
+    cursor: "pointer",
+  },
+  logoutButton: {
+    background: "#fee2e2",
+    color: "#991b1b",
+    border: "1px solid #fecaca",
+    padding: "10px 14px",
+    borderRadius: 12,
+    fontWeight: "bold",
+    cursor: "pointer",
+  },
+};
