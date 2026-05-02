@@ -15,8 +15,8 @@ export default function App() {
   const [showChangePassword, setShowChangePassword] = useState(false);
 
   // AUTO LOGOUT AFTER INACTIVITY
-  //const INACTIVITY_LIMIT = 15 * 60 * 1000; // 15 minutes
-  const INACTIVITY_LIMIT = 1 * 60 * 1000;
+  const INACTIVITY_LIMIT = 10 * 60 * 1000; // 15 minutes
+  //const INACTIVITY_LIMIT = 1 * 60 * 1000;
 
   useEffect(() => {
     if (!user) return;
