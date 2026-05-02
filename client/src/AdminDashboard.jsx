@@ -42,6 +42,8 @@ export default function AdminDashboard() {
     requires_photo: false,
   });
 
+  const isMobile = window.innerWidth < 768;
+
   useEffect(() => {
     loadData();
   }, []);
@@ -249,12 +251,15 @@ export default function AdminDashboard() {
   const admins = users.filter((u) => u.role === "ADMIN").length;
   const operators = users.filter((u) => u.role === "OPERATOR").length;
   const supervisors = users.filter((u) => u.role === "SUPERVISOR").length;
+
   const activeVehicles = vehicles.filter(
     (v) => (v.status || "ACTIVE") === "ACTIVE"
   ).length;
+
   const inactiveVehicles = vehicles.filter(
     (v) => (v.status || "ACTIVE") === "INACTIVE"
   ).length;
+
   const activeChecklistItems = checklistItems.filter((i) => i.is_active).length;
   const inactiveChecklistItems = checklistItems.filter((i) => !i.is_active).length;
 
@@ -321,8 +326,7 @@ export default function AdminDashboard() {
 
           <div style={styles.adminPill}>ADMIN</div>
         </header>
-
-        {active === "dashboard" && (
+                {active === "dashboard" && (
           <>
             <section style={styles.heroPanel}>
               <div>
@@ -371,7 +375,7 @@ export default function AdminDashboard() {
         )}
 
         {active === "users" && (
-          <div style={styles.twoColumn}>
+          <div style={isMobile ? styles.twoColumnMobile : styles.twoColumn}>
             <section style={styles.panel}>
               <h3 style={styles.panelTitle}>Create User</h3>
 
@@ -583,8 +587,9 @@ export default function AdminDashboard() {
             </section>
           </div>
         )}
-                {active === "vehicles" && (
-          <div style={styles.twoColumn}>
+
+        {active === "vehicles" && (
+          <div style={isMobile ? styles.twoColumnMobile : styles.twoColumn}>
             <section style={styles.panel}>
               <h3 style={styles.panelTitle}>Register Vehicle</h3>
 
@@ -644,7 +649,10 @@ export default function AdminDashboard() {
 
               <div style={styles.vehicleList}>
                 {vehicles.map((v) => (
-                  <div key={v.vehicle_id} style={styles.vehicleRow}>
+                  <div
+                    key={v.vehicle_id}
+                    style={isMobile ? styles.vehicleRowMobile : styles.vehicleRow}
+                  >
                     <div style={styles.vehicleInfo}>
                       {editingVehicle === v.vehicle_id ? (
                         <>
@@ -757,7 +765,7 @@ export default function AdminDashboard() {
                             ? vehicleEditForm.qr_code_value
                             : v.qr_code_value
                         }
-                        size={110}
+                        size={isMobile ? 95 : 110}
                         level="H"
                         includeMargin={true}
                       />
@@ -823,9 +831,8 @@ export default function AdminDashboard() {
             </section>
           </div>
         )}
-
-        {active === "checklist" && (
-          <div style={styles.twoColumn}>
+                {active === "checklist" && (
+          <div style={isMobile ? styles.twoColumnMobile : styles.twoColumn}>
             <section style={styles.panel}>
               <h3 style={styles.panelTitle}>Add Checklist Item</h3>
 
@@ -904,7 +911,10 @@ export default function AdminDashboard() {
 
               <div style={styles.vehicleList}>
                 {checklistItems.map((item) => (
-                  <div key={item.item_id} style={styles.vehicleRow}>
+                  <div
+                    key={item.item_id}
+                    style={isMobile ? styles.vehicleRowMobile : styles.vehicleRow}
+                  >
                     <div style={styles.vehicleInfo}>
                       {editingChecklist === item.item_id ? (
                         <>
@@ -1012,11 +1022,13 @@ export default function AdminDashboard() {
                             {item.requires_photo && (
                               <span style={styles.infoBadge}>Photo Required</span>
                             )}
+
                             {item.requires_comment && (
                               <span style={styles.infoBadge}>
                                 Comment Required
                               </span>
                             )}
+
                             <span
                               style={
                                 item.is_active
@@ -1138,20 +1150,22 @@ const styles = {
     display: "flex",
     background: "#eef2f7",
     fontFamily: "Arial, sans-serif",
+    flexDirection: "column",
   },
   sidebar: {
-    width: 260,
+    width: "100%",
     background: "linear-gradient(180deg, #020617, #111827)",
-    padding: 22,
+    padding: 16,
     color: "white",
     display: "flex",
     flexDirection: "column",
+    boxSizing: "border-box",
   },
   brand: {
     display: "flex",
     gap: 12,
     alignItems: "center",
-    marginBottom: 35,
+    marginBottom: 18,
   },
   brandIcon: {
     width: 46,
@@ -1175,32 +1189,35 @@ const styles = {
   },
   nav: {
     display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
     gap: 10,
   },
   navItem: {
     background: "transparent",
     color: "#d1d5db",
-    border: "1px solid transparent",
-    padding: 13,
+    border: "1px solid rgba(255,255,255,0.12)",
+    padding: 12,
     borderRadius: 12,
     textAlign: "left",
     fontWeight: "bold",
     cursor: "pointer",
+    fontSize: 13,
   },
   navActive: {
     background: "#2563eb",
     color: "white",
     border: "1px solid #3b82f6",
-    padding: 13,
+    padding: 12,
     borderRadius: 12,
     textAlign: "left",
     fontWeight: "bold",
     cursor: "pointer",
+    fontSize: 13,
   },
   sidebarFooter: {
-    marginTop: "auto",
+    marginTop: 14,
     background: "rgba(255,255,255,0.08)",
-    padding: 14,
+    padding: 12,
     borderRadius: 14,
   },
   onlineBadge: {
@@ -1213,22 +1230,25 @@ const styles = {
   },
   main: {
     flex: 1,
-    padding: 28,
+    padding: 16,
     overflowY: "auto",
+    boxSizing: "border-box",
   },
   topbar: {
     background: "white",
-    padding: 22,
-    borderRadius: 20,
-    marginBottom: 22,
+    padding: 18,
+    borderRadius: 18,
+    marginBottom: 18,
     display: "flex",
     justifyContent: "space-between",
     alignItems: "center",
+    gap: 12,
     boxShadow: "0 10px 25px rgba(15,23,42,0.06)",
+    flexWrap: "wrap",
   },
   pageTitle: {
     margin: 0,
-    fontSize: 28,
+    fontSize: 24,
     color: "#0f172a",
   },
   pageSubtitle: {
@@ -1245,13 +1265,12 @@ const styles = {
   heroPanel: {
     background: "linear-gradient(135deg, #111827, #1e3a8a)",
     color: "white",
-    padding: 28,
-    borderRadius: 24,
-    marginBottom: 22,
+    padding: 22,
+    borderRadius: 22,
+    marginBottom: 18,
     display: "flex",
-    justifyContent: "space-between",
-    gap: 20,
-    alignItems: "center",
+    flexDirection: "column",
+    gap: 18,
   },
   eyebrow: {
     color: "#93c5fd",
@@ -1262,7 +1281,7 @@ const styles = {
   },
   heroTitle: {
     margin: "6px 0",
-    fontSize: 30,
+    fontSize: 26,
   },
   heroText: {
     color: "#dbeafe",
@@ -1270,20 +1289,20 @@ const styles = {
   },
   heroMetric: {
     background: "rgba(255,255,255,0.12)",
-    padding: 20,
+    padding: 18,
     borderRadius: 18,
     minWidth: 180,
     textAlign: "center",
   },
   metricGrid: {
     display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-    gap: 16,
-    marginBottom: 22,
+    gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
+    gap: 14,
+    marginBottom: 18,
   },
   metricCard: {
     background: "white",
-    padding: 20,
+    padding: 18,
     borderRadius: 18,
     boxShadow: "0 10px 25px rgba(15,23,42,0.06)",
   },
@@ -1294,14 +1313,16 @@ const styles = {
   },
   metricValue: {
     margin: "10px 0 0 0",
-    fontSize: 32,
+    fontSize: 30,
   },
   panel: {
     background: "white",
-    padding: 22,
-    borderRadius: 20,
+    padding: 18,
+    borderRadius: 18,
     boxShadow: "0 10px 25px rgba(15,23,42,0.06)",
-    marginBottom: 22,
+    marginBottom: 18,
+    boxSizing: "border-box",
+    overflowX: "auto",
   },
   panelTitle: {
     marginTop: 0,
@@ -1309,7 +1330,7 @@ const styles = {
   },
   moduleGrid: {
     display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+    gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
     gap: 12,
   },
   moduleCard: {
@@ -1319,12 +1340,18 @@ const styles = {
     padding: 15,
     display: "flex",
     justifyContent: "space-between",
+    gap: 10,
   },
   twoColumn: {
     display: "grid",
     gridTemplateColumns: "380px 1fr",
     gap: 22,
     alignItems: "start",
+  },
+  twoColumnMobile: {
+    display: "grid",
+    gridTemplateColumns: "1fr",
+    gap: 16,
   },
   form: {
     display: "grid",
@@ -1342,6 +1369,8 @@ const styles = {
     marginBottom: 13,
     fontSize: 14,
     outline: "none",
+    width: "100%",
+    boxSizing: "border-box",
   },
   smallInput: {
     width: "100%",
@@ -1363,9 +1392,11 @@ const styles = {
   },
   tableWrapper: {
     overflowX: "auto",
+    width: "100%",
   },
   table: {
     width: "100%",
+    minWidth: 760,
     borderCollapse: "collapse",
   },
   th: {
@@ -1392,6 +1423,7 @@ const styles = {
     borderRadius: 999,
     fontSize: 12,
     fontWeight: "bold",
+    display: "inline-block",
   },
   inactiveBadge: {
     background: "#fee2e2",
@@ -1400,6 +1432,7 @@ const styles = {
     borderRadius: 999,
     fontSize: 12,
     fontWeight: "bold",
+    display: "inline-block",
   },
   infoBadge: {
     background: "#e0f2fe",
@@ -1408,6 +1441,7 @@ const styles = {
     borderRadius: 999,
     fontSize: 12,
     fontWeight: "bold",
+    display: "inline-block",
   },
   badgeRow: {
     display: "flex",
@@ -1498,6 +1532,16 @@ const styles = {
     gap: 16,
     alignItems: "center",
   },
+  vehicleRowMobile: {
+    background: "#f8fafc",
+    border: "1px solid #e2e8f0",
+    borderRadius: 18,
+    padding: 16,
+    display: "flex",
+    flexDirection: "column",
+    gap: 12,
+    alignItems: "stretch",
+  },
   vehicleInfo: {
     minWidth: 0,
   },
@@ -1512,12 +1556,14 @@ const styles = {
     borderRadius: 999,
     fontSize: 12,
     fontWeight: "bold",
+    wordBreak: "break-word",
   },
   qrBox: {
     background: "white",
     padding: 8,
     borderRadius: 14,
     border: "1px solid #e2e8f0",
+    width: "fit-content",
   },
   downloadButton: {
     background: "#0f172a",
@@ -1541,4 +1587,3 @@ const styles = {
     fontWeight: "bold",
   },
 };
-        
