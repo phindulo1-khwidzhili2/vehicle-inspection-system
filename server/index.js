@@ -693,6 +693,161 @@ app.patch("/api/change-password", auth, async (req, res) => {
   }
 });
 
+/* ADMIN CHECKLIST MANAGEMENT */
+
+app.get("/api/admin/checklist-categories", auth, allowRoles("ADMIN"), async (req, res) => {
+  try {
+    const result = await db.query(`
+      SELECT category_id, category_name, hazard_class, action_required
+      FROM checklist_categories
+      ORDER BY hazard_class, category_name
+    `);
+
+    res.json(result.rows);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get("/api/admin/checklist-items", auth, allowRoles("ADMIN"), async (req, res) => {
+  try {
+    const result = await db.query(`
+      SELECT 
+        ci.item_id,
+        ci.item_name,
+        ci.description,
+        ci.requires_comment,
+        ci.requires_photo,
+        ci.is_active,
+        ci.category_id,
+        cc.category_name,
+        cc.hazard_class,
+        cc.action_required
+      FROM checklist_items ci
+      JOIN checklist_categories cc 
+      ON ci.category_id = cc.category_id
+      ORDER BY ci.is_active DESC, cc.hazard_class, ci.item_name
+    `);
+
+    res.json(result.rows);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post("/api/admin/checklist-items", auth, allowRoles("ADMIN"), async (req, res) => {
+  try {
+    const {
+      item_name,
+      description,
+      category_id,
+      requires_comment,
+      requires_photo,
+    } = req.body;
+
+    if (!item_name || !category_id) {
+      return res.status(400).json({ error: "Item name and category are required" });
+    }
+
+    const result = await db.query(
+      `
+      INSERT INTO checklist_items
+      (item_name, description, category_id, requires_comment, requires_photo, is_active)
+      VALUES ($1, $2, $3, $4, $5, true)
+      RETURNING *
+      `,
+      [
+        item_name,
+        description || "",
+        category_id,
+        requires_comment || false,
+        requires_photo || false,
+      ]
+    );
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.patch("/api/admin/checklist-items/:id", auth, allowRoles("ADMIN"), async (req, res) => {
+  try {
+    const {
+      item_name,
+      description,
+      category_id,
+      requires_comment,
+      requires_photo,
+      is_active,
+    } = req.body;
+
+    const result = await db.query(
+      `
+      UPDATE checklist_items
+      SET item_name = $1,
+          description = $2,
+          category_id = $3,
+          requires_comment = $4,
+          requires_photo = $5,
+          is_active = $6
+      WHERE item_id = $7
+      RETURNING *
+      `,
+      [
+        item_name,
+        description || "",
+        category_id,
+        requires_comment || false,
+        requires_photo || false,
+        is_active,
+        req.params.id,
+      ]
+    );
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.patch("/api/admin/checklist-items/:id/deactivate", auth, allowRoles("ADMIN"), async (req, res) => {
+  try {
+    const result = await db.query(
+      `
+      UPDATE checklist_items
+      SET is_active = false
+      WHERE item_id = $1
+      RETURNING *
+      `,
+      [req.params.id]
+    );
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.patch("/api/admin/checklist-items/:id/reactivate", auth, allowRoles("ADMIN"), async (req, res) => {
+  try {
+    const result = await db.query(
+      `
+      UPDATE checklist_items
+      SET is_active = true
+      WHERE item_id = $1
+      RETURNING *
+      `,
+      [req.params.id]
+    );
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+
 const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, () => {

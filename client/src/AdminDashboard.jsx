@@ -5,6 +5,8 @@ import { QRCodeCanvas } from "qrcode.react";
 export default function AdminDashboard() {
   const [users, setUsers] = useState([]);
   const [vehicles, setVehicles] = useState([]);
+  const [checklistItems, setChecklistItems] = useState([]);
+  const [categories, setCategories] = useState([]);
   const [active, setActive] = useState("dashboard");
 
   const [editingUser, setEditingUser] = useState(null);
@@ -12,6 +14,9 @@ export default function AdminDashboard() {
 
   const [editingVehicle, setEditingVehicle] = useState(null);
   const [vehicleEditForm, setVehicleEditForm] = useState({});
+
+  const [editingChecklist, setEditingChecklist] = useState(null);
+  const [checklistEditForm, setChecklistEditForm] = useState({});
 
   const [userForm, setUserForm] = useState({
     full_name: "",
@@ -29,6 +34,14 @@ export default function AdminDashboard() {
     qr_code_value: "",
   });
 
+  const [checklistForm, setChecklistForm] = useState({
+    item_name: "",
+    description: "",
+    category_id: "",
+    requires_comment: false,
+    requires_photo: false,
+  });
+
   useEffect(() => {
     loadData();
   }, []);
@@ -36,9 +49,13 @@ export default function AdminDashboard() {
   async function loadData() {
     const usersRes = await API.get("/users");
     const vehiclesRes = await API.get("/vehicles");
+    const checklistRes = await API.get("/admin/checklist-items");
+    const categoriesRes = await API.get("/admin/checklist-categories");
 
     setUsers(usersRes.data);
     setVehicles(vehiclesRes.data);
+    setChecklistItems(checklistRes.data);
+    setCategories(categoriesRes.data);
   }
 
   async function addUser(e) {
@@ -172,6 +189,61 @@ export default function AdminDashboard() {
     link.click();
   }
 
+  async function addChecklistItem(e) {
+    e.preventDefault();
+
+    if (!checklistForm.item_name || !checklistForm.category_id) {
+      alert("Item name and category are required");
+      return;
+    }
+
+    await API.post("/admin/checklist-items", checklistForm);
+
+    alert("Checklist item added successfully");
+
+    setChecklistForm({
+      item_name: "",
+      description: "",
+      category_id: "",
+      requires_comment: false,
+      requires_photo: false,
+    });
+
+    loadData();
+  }
+
+  function startChecklistEdit(item) {
+    setEditingChecklist(item.item_id);
+    setChecklistEditForm({
+      item_name: item.item_name,
+      description: item.description || "",
+      category_id: item.category_id,
+      requires_comment: item.requires_comment || false,
+      requires_photo: item.requires_photo || false,
+      is_active: item.is_active,
+    });
+  }
+
+  async function saveChecklistEdit(id) {
+    await API.patch(`/admin/checklist-items/${id}`, checklistEditForm);
+    alert("Checklist item updated successfully");
+    setEditingChecklist(null);
+    setChecklistEditForm({});
+    loadData();
+  }
+
+  async function deactivateChecklistItem(id) {
+    await API.patch(`/admin/checklist-items/${id}/deactivate`);
+    alert("Checklist item deactivated");
+    loadData();
+  }
+
+  async function reactivateChecklistItem(id) {
+    await API.patch(`/admin/checklist-items/${id}/reactivate`);
+    alert("Checklist item reactivated");
+    loadData();
+  }
+
   const activeUsers = users.filter((u) => u.is_active).length;
   const inactiveUsers = users.filter((u) => !u.is_active).length;
   const admins = users.filter((u) => u.role === "ADMIN").length;
@@ -183,6 +255,8 @@ export default function AdminDashboard() {
   const inactiveVehicles = vehicles.filter(
     (v) => (v.status || "ACTIVE") === "INACTIVE"
   ).length;
+  const activeChecklistItems = checklistItems.filter((i) => i.is_active).length;
+  const inactiveChecklistItems = checklistItems.filter((i) => !i.is_active).length;
 
   return (
     <div style={styles.shell}>
@@ -216,6 +290,13 @@ export default function AdminDashboard() {
           >
             Vehicle & QR Control
           </button>
+
+          <button
+            style={active === "checklist" ? styles.navActive : styles.navItem}
+            onClick={() => setActive("checklist")}
+          >
+            Checklist Management
+          </button>
         </nav>
 
         <div style={styles.sidebarFooter}>
@@ -231,6 +312,7 @@ export default function AdminDashboard() {
               {active === "dashboard" && "Executive Overview"}
               {active === "users" && "User Administration"}
               {active === "vehicles" && "Vehicle & QR Management"}
+              {active === "checklist" && "Checklist Management"}
             </h1>
             <p style={styles.pageSubtitle}>
               Mining vehicle pre-use inspection management system
@@ -247,13 +329,13 @@ export default function AdminDashboard() {
                 <p style={styles.eyebrow}>Control Center</p>
                 <h2 style={styles.heroTitle}>Inspection System Operations</h2>
                 <p style={styles.heroText}>
-                  Manage users, vehicles, QR codes, approvals, inspections and
-                  photo-based defect evidence.
+                  Manage users, vehicles, QR codes, checklist rules, approvals,
+                  inspections and photo-based defect evidence.
                 </p>
               </div>
 
               <div style={styles.heroMetric}>
-                <h2>{users.length + vehicles.length}</h2>
+                <h2>{users.length + vehicles.length + checklistItems.length}</h2>
                 <p>Total Managed Records</p>
               </div>
             </section>
@@ -264,11 +346,10 @@ export default function AdminDashboard() {
               <MetricCard title="Inactive Users" value={inactiveUsers} danger />
               <MetricCard title="Total Vehicles" value={vehicles.length} />
               <MetricCard title="Active Vehicles" value={activeVehicles} success />
-              <MetricCard
-                title="Inactive Vehicles"
-                value={inactiveVehicles}
-                danger
-              />
+              <MetricCard title="Inactive Vehicles" value={inactiveVehicles} danger />
+              <MetricCard title="Checklist Items" value={checklistItems.length} />
+              <MetricCard title="Active Checklist" value={activeChecklistItems} success />
+              <MetricCard title="Inactive Checklist" value={inactiveChecklistItems} danger />
               <MetricCard title="Operators" value={operators} />
               <MetricCard title="Supervisors" value={supervisors} />
               <MetricCard title="Admins" value={admins} />
@@ -279,7 +360,7 @@ export default function AdminDashboard() {
 
               <div style={styles.moduleGrid}>
                 <Module title="QR Vehicle Identification" status="Enabled" />
-                <Module title="Pre-use Checklist" status="Enabled" />
+                <Module title="Dynamic Checklist Management" status="Enabled" />
                 <Module title="Supervisor Approval" status="Enabled" />
                 <Module title="Photo Evidence Upload" status="Enabled" />
                 <Module title="Operator History" status="Enabled" />
@@ -502,8 +583,7 @@ export default function AdminDashboard() {
             </section>
           </div>
         )}
-
-        {active === "vehicles" && (
+                {active === "vehicles" && (
           <div style={styles.twoColumn}>
             <section style={styles.panel}>
               <h3 style={styles.panelTitle}>Register Vehicle</h3>
@@ -732,6 +812,271 @@ export default function AdminDashboard() {
                               onClick={() => reactivateVehicle(v.vehicle_id)}
                             >
                               Restore
+                            </button>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          </div>
+        )}
+
+        {active === "checklist" && (
+          <div style={styles.twoColumn}>
+            <section style={styles.panel}>
+              <h3 style={styles.panelTitle}>Add Checklist Item</h3>
+
+              <form onSubmit={addChecklistItem} style={styles.form}>
+                <Field
+                  label="Item Name"
+                  placeholder="Example: Check tyres condition"
+                  value={checklistForm.item_name}
+                  onChange={(value) =>
+                    setChecklistForm({ ...checklistForm, item_name: value })
+                  }
+                />
+
+                <Field
+                  label="Description"
+                  placeholder="Optional description"
+                  value={checklistForm.description}
+                  onChange={(value) =>
+                    setChecklistForm({ ...checklistForm, description: value })
+                  }
+                />
+
+                <label style={styles.label}>Category / Hazard Class</label>
+                <select
+                  value={checklistForm.category_id}
+                  onChange={(e) =>
+                    setChecklistForm({
+                      ...checklistForm,
+                      category_id: e.target.value,
+                    })
+                  }
+                  style={styles.input}
+                >
+                  <option value="">Select category</option>
+                  {categories.map((cat) => (
+                    <option key={cat.category_id} value={cat.category_id}>
+                      {cat.category_name} — Class {cat.hazard_class}
+                    </option>
+                  ))}
+                </select>
+
+                <label style={styles.checkboxRow}>
+                  <input
+                    type="checkbox"
+                    checked={checklistForm.requires_photo}
+                    onChange={(e) =>
+                      setChecklistForm({
+                        ...checklistForm,
+                        requires_photo: e.target.checked,
+                      })
+                    }
+                  />
+                  Requires defect photo
+                </label>
+
+                <label style={styles.checkboxRow}>
+                  <input
+                    type="checkbox"
+                    checked={checklistForm.requires_comment}
+                    onChange={(e) =>
+                      setChecklistForm({
+                        ...checklistForm,
+                        requires_comment: e.target.checked,
+                      })
+                    }
+                  />
+                  Requires comment
+                </label>
+
+                <button style={styles.primaryButton}>Add Checklist Item</button>
+              </form>
+            </section>
+
+            <section style={styles.panel}>
+              <h3 style={styles.panelTitle}>Checklist Items</h3>
+
+              <div style={styles.vehicleList}>
+                {checklistItems.map((item) => (
+                  <div key={item.item_id} style={styles.vehicleRow}>
+                    <div style={styles.vehicleInfo}>
+                      {editingChecklist === item.item_id ? (
+                        <>
+                          <input
+                            value={checklistEditForm.item_name}
+                            onChange={(e) =>
+                              setChecklistEditForm({
+                                ...checklistEditForm,
+                                item_name: e.target.value,
+                              })
+                            }
+                            style={styles.smallInput}
+                            placeholder="Item name"
+                          />
+
+                          <input
+                            value={checklistEditForm.description}
+                            onChange={(e) =>
+                              setChecklistEditForm({
+                                ...checklistEditForm,
+                                description: e.target.value,
+                              })
+                            }
+                            style={styles.smallInput}
+                            placeholder="Description"
+                          />
+
+                          <select
+                            value={checklistEditForm.category_id}
+                            onChange={(e) =>
+                              setChecklistEditForm({
+                                ...checklistEditForm,
+                                category_id: e.target.value,
+                              })
+                            }
+                            style={styles.smallInput}
+                          >
+                            {categories.map((cat) => (
+                              <option
+                                key={cat.category_id}
+                                value={cat.category_id}
+                              >
+                                {cat.category_name} — Class {cat.hazard_class}
+                              </option>
+                            ))}
+                          </select>
+
+                          <label style={styles.checkboxRowSmall}>
+                            <input
+                              type="checkbox"
+                              checked={checklistEditForm.requires_photo}
+                              onChange={(e) =>
+                                setChecklistEditForm({
+                                  ...checklistEditForm,
+                                  requires_photo: e.target.checked,
+                                })
+                              }
+                            />
+                            Requires photo
+                          </label>
+
+                          <label style={styles.checkboxRowSmall}>
+                            <input
+                              type="checkbox"
+                              checked={checklistEditForm.requires_comment}
+                              onChange={(e) =>
+                                setChecklistEditForm({
+                                  ...checklistEditForm,
+                                  requires_comment: e.target.checked,
+                                })
+                              }
+                            />
+                            Requires comment
+                          </label>
+
+                          <select
+                            value={
+                              checklistEditForm.is_active ? "ACTIVE" : "INACTIVE"
+                            }
+                            onChange={(e) =>
+                              setChecklistEditForm({
+                                ...checklistEditForm,
+                                is_active: e.target.value === "ACTIVE",
+                              })
+                            }
+                            style={styles.smallInput}
+                          >
+                            <option value="ACTIVE">ACTIVE</option>
+                            <option value="INACTIVE">INACTIVE</option>
+                          </select>
+                        </>
+                      ) : (
+                        <>
+                          <h3 style={styles.vehicleTitle}>{item.item_name}</h3>
+
+                          <p style={styles.tableSub}>
+                            {item.category_name} • Class {item.hazard_class}
+                          </p>
+
+                          {item.description && (
+                            <p style={styles.tableSub}>{item.description}</p>
+                          )}
+
+                          <div style={styles.badgeRow}>
+                            {item.requires_photo && (
+                              <span style={styles.infoBadge}>Photo Required</span>
+                            )}
+                            {item.requires_comment && (
+                              <span style={styles.infoBadge}>
+                                Comment Required
+                              </span>
+                            )}
+                            <span
+                              style={
+                                item.is_active
+                                  ? styles.activeBadge
+                                  : styles.inactiveBadge
+                              }
+                            >
+                              {item.is_active ? "ACTIVE" : "INACTIVE"}
+                            </span>
+                          </div>
+                        </>
+                      )}
+                    </div>
+
+                    <div style={styles.actionGroup}>
+                      {editingChecklist === item.item_id ? (
+                        <>
+                          <button
+                            style={styles.smallSaveButton}
+                            onClick={() => saveChecklistEdit(item.item_id)}
+                          >
+                            Save
+                          </button>
+
+                          <button
+                            style={styles.smallNeutralButton}
+                            onClick={() => {
+                              setEditingChecklist(null);
+                              setChecklistEditForm({});
+                            }}
+                          >
+                            Cancel
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <button
+                            style={styles.smallEditButton}
+                            onClick={() => startChecklistEdit(item)}
+                          >
+                            Edit
+                          </button>
+
+                          {item.is_active ? (
+                            <button
+                              style={styles.smallDangerButton}
+                              onClick={() =>
+                                deactivateChecklistItem(item.item_id)
+                              }
+                            >
+                              Deactivate
+                            </button>
+                          ) : (
+                            <button
+                              style={styles.smallSuccessButton}
+                              onClick={() =>
+                                reactivateChecklistItem(item.item_id)
+                              }
+                            >
+                              Activate
                             </button>
                           )}
                         </>
@@ -1056,6 +1401,38 @@ const styles = {
     fontSize: 12,
     fontWeight: "bold",
   },
+  infoBadge: {
+    background: "#e0f2fe",
+    color: "#075985",
+    padding: "6px 10px",
+    borderRadius: 999,
+    fontSize: 12,
+    fontWeight: "bold",
+  },
+  badgeRow: {
+    display: "flex",
+    gap: 8,
+    flexWrap: "wrap",
+    marginTop: 10,
+  },
+  checkboxRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 12,
+    fontSize: 14,
+    color: "#334155",
+    fontWeight: "bold",
+  },
+  checkboxRowSmall: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 6,
+    fontSize: 13,
+    color: "#334155",
+    fontWeight: "bold",
+  },
   actionGroup: {
     display: "flex",
     gap: 8,
@@ -1164,3 +1541,4 @@ const styles = {
     fontWeight: "bold",
   },
 };
+        
