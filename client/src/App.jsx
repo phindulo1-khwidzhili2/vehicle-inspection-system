@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Login from "./Login";
 import ScanVehicle from "./ScanVehicle";
 import InspectionForm from "./InspectionForm";
@@ -13,6 +13,42 @@ export default function App() {
   const [user, setUser] = useState(savedUser ? JSON.parse(savedUser) : null);
   const [vehicle, setVehicle] = useState(null);
   const [showChangePassword, setShowChangePassword] = useState(false);
+
+  // AUTO LOGOUT AFTER INACTIVITY
+  //const INACTIVITY_LIMIT = 15 * 60 * 1000; // 15 minutes
+  const INACTIVITY_LIMIT = 1 * 60 * 1000;
+
+  useEffect(() => {
+    if (!user) return;
+
+    let timer;
+
+    function logoutDueToInactivity() {
+      alert("Session expired due to inactivity. Please login again.");
+      localStorage.clear();
+      window.location.reload();
+    }
+
+    function resetTimer() {
+      clearTimeout(timer);
+      timer = setTimeout(logoutDueToInactivity, INACTIVITY_LIMIT);
+    }
+
+    const events = ["mousemove", "keydown", "click", "scroll", "touchstart"];
+
+    events.forEach((event) => {
+      window.addEventListener(event, resetTimer);
+    });
+
+    resetTimer();
+
+    return () => {
+      clearTimeout(timer);
+      events.forEach((event) => {
+        window.removeEventListener(event, resetTimer);
+      });
+    };
+  }, [user]);
 
   async function handleScan(qrCode) {
     try {
@@ -33,13 +69,19 @@ export default function App() {
       <div style={styles.actionBar}>
         <div style={styles.actionLeft}>
           {showBack && (
-            <button style={styles.secondaryButton} onClick={() => setVehicle(null)}>
+            <button
+              style={styles.secondaryButton}
+              onClick={() => setVehicle(null)}
+            >
               ← Back
             </button>
           )}
 
           {showHistory && (
-            <button style={styles.primaryButton} onClick={() => setVehicle("HISTORY")}>
+            <button
+              style={styles.primaryButton}
+              onClick={() => setVehicle("HISTORY")}
+            >
               View My Inspections
             </button>
           )}
