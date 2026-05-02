@@ -16,8 +16,8 @@ export default function Login({ setUser }) {
 
       setUser(res.data.user);
     } catch (err) {
-      alert("Invalid login details");
-    }
+  alert(err.response?.data?.error || "Login failed");
+}
   }
 
   return (
