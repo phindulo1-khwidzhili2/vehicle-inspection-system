@@ -6,12 +6,14 @@ const bcrypt = require("bcryptjs");
 const rateLimit = require("express-rate-limit");
 const { createClient } = require("@supabase/supabase-js");
 
-
 require("dotenv").config();
 
 const db = require("./db");
 
 const app = express();
+
+/* IMPORTANT FOR RENDER / PROXY HOSTING */
+app.set("trust proxy", 1);
 
 app.use(cors());
 app.use(express.json());
@@ -19,23 +21,27 @@ app.use(express.json());
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 5,
-  message: {
-    error: "Too many login attempts. Please try again after 15 minutes.",
-  },
   standardHeaders: true,
   legacyHeaders: false,
+  keyGenerator: (req) => req.ip,
+  handler: (req, res) => {
+    console.log("RATE LIMIT HIT:", req.ip);
+
+    return res.status(429).json({
+      error: "Too many login attempts. Please try again after 15 minutes.",
+    });
+  },
 });
 
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 200,
+  standardHeaders: true,
+  legacyHeaders: false,
   message: {
     error: "Too many requests. Please try again later.",
   },
-  standardHeaders: true,
-  legacyHeaders: false,
 });
-
 
 const upload = multer({ storage: multer.memoryStorage() });
 
@@ -51,14 +57,16 @@ app.get("/", (req, res) => {
 function auth(req, res, next) {
   const token = req.headers.authorization?.split(" ")[1];
 
-  if (!token) return res.status(401).json({ error: "No token provided" });
+  if (!token) {
+    return res.status(401).json({ error: "No token provided" });
+  }
 
   try {
     const user = jwt.verify(token, process.env.JWT_SECRET);
     req.user = user;
     next();
   } catch {
-    res.status(401).json({ error: "Invalid token" });
+    return res.status(401).json({ error: "Invalid token" });
   }
 }
 
@@ -72,8 +80,11 @@ function allowRoles(...roles) {
   };
 }
 
+/* LOGIN ROUTE WITH STRICT RATE LIMIT */
 app.post("/api/login", loginLimiter, async (req, res) => {
   try {
+    console.log("LOGIN ATTEMPT IP:", req.ip);
+
     const { email, password } = req.body;
 
     const result = await db.query(
@@ -87,11 +98,11 @@ app.post("/api/login", loginLimiter, async (req, res) => {
 
     const user = result.rows[0];
 
-   const validPassword = await bcrypt.compare(password, user.password);
+    const validPassword = await bcrypt.compare(password, user.password);
 
-if (!validPassword) {
-  return res.status(401).json({ error: "Invalid login details" });
-}
+    if (!validPassword) {
+      return res.status(401).json({ error: "Invalid login details" });
+    }
 
     const token = jwt.sign(
       {
@@ -111,42 +122,47 @@ if (!validPassword) {
         role: user.role,
       },
     });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/* GENERAL API RATE LIMIT */
 app.use("/api", apiLimiter);
 
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
+app.post(
+  "/api/upload-defect-photo",
+  auth,
+  upload.single("photo"),
+  async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ error: "No photo uploaded" });
+      }
 
+      const fileExt = req.file.originalname.split(".").pop();
+      const fileName = `defect-${Date.now()}-${Math.random()
+        .toString(36)
+        .substring(2)}.${fileExt}`;
 
-app.post("/api/upload-defect-photo", auth, upload.single("photo"), async (req, res) => {
-  try {
-    if (!req.file) {
-      return res.status(400).json({ error: "No photo uploaded" });
+      const { error } = await supabase.storage
+        .from("defect-photos")
+        .upload(fileName, req.file.buffer, {
+          contentType: req.file.mimetype,
+        });
+
+      if (error) throw error;
+
+      const { data } = supabase.storage
+        .from("defect-photos")
+        .getPublicUrl(fileName);
+
+      res.json({ photo_url: data.publicUrl });
+    } catch (error) {
+      res.status(500).json({ error: error.message });
     }
-
-    const fileExt = req.file.originalname.split(".").pop();
-    const fileName = `defect-${Date.now()}-${Math.random()
-      .toString(36)
-      .substring(2)}.${fileExt}`;
-
-    const { error } = await supabase.storage
-      .from("defect-photos")
-      .upload(fileName, req.file.buffer, {
-        contentType: req.file.mimetype,
-      });
-
-    if (error) throw error;
-
-    const { data } = supabase.storage
-      .from("defect-photos")
-      .getPublicUrl(fileName);
-
-    res.json({ photo_url: data.publicUrl });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
   }
-});
+);
 
 app.get("/api/checklist", auth, async (req, res) => {
   try {
@@ -256,74 +272,89 @@ app.post("/api/inspections", auth, allowRoles("OPERATOR"), async (req, res) => {
   }
 });
 
-app.get("/api/pending-inspections", auth, allowRoles("SUPERVISOR"), async (req, res) => {
-  try {
-    const result = await db.query(`
-      SELECT 
-        i.*,
-        v.registration_number,
-        v.vehicle_code,
-        v.vehicle_type,
-        u.full_name AS operator_name
-      FROM inspections i
-      JOIN vehicles v ON i.vehicle_id = v.vehicle_id
-      JOIN users u ON i.operator_id = u.user_id
-      WHERE i.inspection_status = 'PENDING_APPROVAL'
-      ORDER BY i.submitted_at DESC
-    `);
+app.get(
+  "/api/pending-inspections",
+  auth,
+  allowRoles("SUPERVISOR"),
+  async (req, res) => {
+    try {
+      const result = await db.query(`
+        SELECT 
+          i.*,
+          v.registration_number,
+          v.vehicle_code,
+          v.vehicle_type,
+          u.full_name AS operator_name
+        FROM inspections i
+        JOIN vehicles v ON i.vehicle_id = v.vehicle_id
+        JOIN users u ON i.operator_id = u.user_id
+        WHERE i.inspection_status = 'PENDING_APPROVAL'
+        ORDER BY i.submitted_at DESC
+      `);
 
-    res.json(result.rows);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
+      res.json(result.rows);
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
   }
-});
+);
 
-app.patch("/api/inspections/:id/approve", auth, allowRoles("SUPERVISOR"), async (req, res) => {
-  try {
-    const { status, supervisor_comment } = req.body;
+app.patch(
+  "/api/inspections/:id/approve",
+  auth,
+  allowRoles("SUPERVISOR"),
+  async (req, res) => {
+    try {
+      const { status, supervisor_comment } = req.body;
 
-    const result = await db.query(
-      `
-      UPDATE inspections
-      SET inspection_status = $1,
-          approved_at = CURRENT_TIMESTAMP,
-          supervisor_comment = $2
-      WHERE inspection_id = $3
-      RETURNING *
-      `,
-      [status, supervisor_comment || "", req.params.id]
-    );
+      const result = await db.query(
+        `
+        UPDATE inspections
+        SET inspection_status = $1,
+            approved_at = CURRENT_TIMESTAMP,
+            supervisor_comment = $2
+        WHERE inspection_id = $3
+        RETURNING *
+        `,
+        [status, supervisor_comment || "", req.params.id]
+      );
 
-    res.json(result.rows[0]);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
+      res.json(result.rows[0]);
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
   }
-});
+);
 
-app.get("/api/my-inspections", auth, allowRoles("OPERATOR"), async (req, res) => {
-  try {
-    const result = await db.query(
-      `
-      SELECT 
-        i.*,
-        v.registration_number,
-        v.vehicle_code,
-        v.vehicle_type
-      FROM inspections i
-      JOIN vehicles v ON i.vehicle_id = v.vehicle_id
-      WHERE i.operator_id = $1
-      ORDER BY i.submitted_at DESC
-      `,
-      [req.user.user_id]
-    );
+app.get(
+  "/api/my-inspections",
+  auth,
+  allowRoles("OPERATOR"),
+  async (req, res) => {
+    try {
+      const result = await db.query(
+        `
+        SELECT 
+          i.*,
+          v.registration_number,
+          v.vehicle_code,
+          v.vehicle_type
+        FROM inspections i
+        JOIN vehicles v ON i.vehicle_id = v.vehicle_id
+        WHERE i.operator_id = $1
+        ORDER BY i.submitted_at DESC
+        `,
+        [req.user.user_id]
+      );
 
-    res.json(result.rows);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
+      res.json(result.rows);
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
   }
-});
+);
 
-/* ADMIN ROUTES */
+/* ADMIN USER ROUTES */
 
 app.get("/api/users", auth, allowRoles("ADMIN"), async (req, res) => {
   try {
@@ -360,16 +391,67 @@ app.post("/api/users", auth, allowRoles("ADMIN"), async (req, res) => {
   }
 });
 
-app.patch("/api/users/:id/deactivate", auth, allowRoles("ADMIN"), async (req, res) => {
+app.patch(
+  "/api/users/:id/deactivate",
+  auth,
+  allowRoles("ADMIN"),
+  async (req, res) => {
+    try {
+      const result = await db.query(
+        `
+        UPDATE users
+        SET is_active = false
+        WHERE user_id = $1
+        RETURNING user_id, full_name, email, role, is_active
+        `,
+        [req.params.id]
+      );
+
+      res.json(result.rows[0]);
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  }
+);
+
+app.patch(
+  "/api/users/:id/reactivate",
+  auth,
+  allowRoles("ADMIN"),
+  async (req, res) => {
+    try {
+      const result = await db.query(
+        `
+        UPDATE users
+        SET is_active = true
+        WHERE user_id = $1
+        RETURNING user_id, full_name, email, role, is_active
+        `,
+        [req.params.id]
+      );
+
+      res.json(result.rows[0]);
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  }
+);
+
+app.patch("/api/users/:id", auth, allowRoles("ADMIN"), async (req, res) => {
   try {
+    const { full_name, email, role, department } = req.body;
+
     const result = await db.query(
       `
       UPDATE users
-      SET is_active = false
-      WHERE user_id = $1
-      RETURNING user_id, full_name, email, role, is_active
+      SET full_name = $1,
+          email = $2,
+          role = $3,
+          department = $4
+      WHERE user_id = $5
+      RETURNING user_id, full_name, email, role, department, is_active
       `,
-      [req.params.id]
+      [full_name, email, role, department, req.params.id]
     );
 
     res.json(result.rows[0]);
@@ -377,6 +459,8 @@ app.patch("/api/users/:id/deactivate", auth, allowRoles("ADMIN"), async (req, re
     res.status(500).json({ error: error.message });
   }
 });
+
+/* VEHICLE ADMIN ROUTES */
 
 app.get("/api/vehicles", auth, allowRoles("ADMIN"), async (req, res) => {
   try {
@@ -424,6 +508,94 @@ app.post("/api/vehicles", auth, allowRoles("ADMIN"), async (req, res) => {
   }
 });
 
+app.patch("/api/vehicles/:id", auth, allowRoles("ADMIN"), async (req, res) => {
+  try {
+    const {
+      vehicle_code,
+      registration_number,
+      vehicle_type,
+      department,
+      qr_code_value,
+      status,
+    } = req.body;
+
+    const result = await db.query(
+      `
+      UPDATE vehicles
+      SET vehicle_code = $1,
+          registration_number = $2,
+          vehicle_type = $3,
+          department = $4,
+          qr_code_value = $5,
+          status = $6
+      WHERE vehicle_id = $7
+      RETURNING *
+      `,
+      [
+        vehicle_code,
+        registration_number,
+        vehicle_type,
+        department,
+        qr_code_value,
+        status || "ACTIVE",
+        req.params.id,
+      ]
+    );
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.patch(
+  "/api/vehicles/:id/deactivate",
+  auth,
+  allowRoles("ADMIN"),
+  async (req, res) => {
+    try {
+      const result = await db.query(
+        `
+        UPDATE vehicles
+        SET status = 'INACTIVE'
+        WHERE vehicle_id = $1
+        RETURNING *
+        `,
+        [req.params.id]
+      );
+
+      res.json(result.rows[0]);
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  }
+);
+
+app.patch(
+  "/api/vehicles/:id/reactivate",
+  auth,
+  allowRoles("ADMIN"),
+  async (req, res) => {
+    try {
+      const result = await db.query(
+        `
+        UPDATE vehicles
+        SET status = 'ACTIVE'
+        WHERE vehicle_id = $1
+        RETURNING *
+        `,
+        [req.params.id]
+      );
+
+      res.json(result.rows[0]);
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  }
+);
+
+/* INSPECTION DETAILS */
+
 app.get("/api/inspections/:id/details", auth, async (req, res) => {
   try {
     const inspectionResult = await db.query(
@@ -469,132 +641,16 @@ app.get("/api/inspections/:id/details", auth, async (req, res) => {
   }
 });
 
-app.patch("/api/users/:id", auth, allowRoles("ADMIN"), async (req, res) => {
-  try {
-    const { full_name, email, role, department } = req.body;
-
-    const result = await db.query(
-      `
-      UPDATE users
-      SET full_name = $1,
-          email = $2,
-          role = $3,
-          department = $4
-      WHERE user_id = $5
-      RETURNING user_id, full_name, email, role, department, is_active
-      `,
-      [full_name, email, role, department, req.params.id]
-    );
-
-    res.json(result.rows[0]);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-app.patch("/api/users/:id/reactivate", auth, allowRoles("ADMIN"), async (req, res) => {
-  try {
-    const result = await db.query(
-      `
-      UPDATE users
-      SET is_active = true
-      WHERE user_id = $1
-      RETURNING user_id, full_name, email, role, is_active
-      `,
-      [req.params.id]
-    );
-
-    res.json(result.rows[0]);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-
-app.patch("/api/vehicles/:id", auth, allowRoles("ADMIN"), async (req, res) => {
-  try {
-    const {
-      vehicle_code,
-      registration_number,
-      vehicle_type,
-      department,
-      qr_code_value,
-      status,
-    } = req.body;
-
-    const result = await db.query(
-      `
-      UPDATE vehicles
-      SET vehicle_code = $1,
-          registration_number = $2,
-          vehicle_type = $3,
-          department = $4,
-          qr_code_value = $5,
-          status = $6
-      WHERE vehicle_id = $7
-      RETURNING *
-      `,
-      [
-        vehicle_code,
-        registration_number,
-        vehicle_type,
-        department,
-        qr_code_value,
-        status || "ACTIVE",
-        req.params.id,
-      ]
-    );
-
-    res.json(result.rows[0]);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-app.patch("/api/vehicles/:id/deactivate", auth, allowRoles("ADMIN"), async (req, res) => {
-  try {
-    const result = await db.query(
-      `
-      UPDATE vehicles
-      SET status = 'INACTIVE'
-      WHERE vehicle_id = $1
-      RETURNING *
-      `,
-      [req.params.id]
-    );
-
-    res.json(result.rows[0]);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-app.patch("/api/vehicles/:id/reactivate", auth, allowRoles("ADMIN"), async (req, res) => {
-  try {
-    const result = await db.query(
-      `
-      UPDATE vehicles
-      SET status = 'ACTIVE'
-      WHERE vehicle_id = $1
-      RETURNING *
-      `,
-      [req.params.id]
-    );
-
-    res.json(result.rows[0]);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-const PORT = process.env.PORT || 5000;
+/* CHANGE PASSWORD */
 
 app.patch("/api/change-password", auth, async (req, res) => {
   try {
     const { oldPassword, newPassword, confirmPassword } = req.body;
 
     if (!oldPassword || !newPassword || !confirmPassword) {
-      return res.status(400).json({ error: "All password fields are required" });
+      return res.status(400).json({
+        error: "All password fields are required",
+      });
     }
 
     if (newPassword !== confirmPassword) {
@@ -602,7 +658,9 @@ app.patch("/api/change-password", auth, async (req, res) => {
     }
 
     if (newPassword.length < 8) {
-      return res.status(400).json({ error: "Password must be at least 8 characters" });
+      return res.status(400).json({
+        error: "Password must be at least 8 characters",
+      });
     }
 
     const result = await db.query(
@@ -624,16 +682,18 @@ app.patch("/api/change-password", auth, async (req, res) => {
 
     const hashedPassword = await bcrypt.hash(newPassword, 10);
 
-    await db.query(
-      "UPDATE users SET password = $1 WHERE user_id = $2",
-      [hashedPassword, req.user.user_id]
-    );
+    await db.query("UPDATE users SET password = $1 WHERE user_id = $2", [
+      hashedPassword,
+      req.user.user_id,
+    ]);
 
     res.json({ message: "Password changed successfully" });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
+
+const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
